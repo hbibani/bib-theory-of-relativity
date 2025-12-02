@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Space Curve for Schwarzschild Geometry</title>
+<style>
+  body {
+    margin: 0;
+    background: #000;
+    color: #fff;
+    font-family: Arial, sans-serif;
+  }
+  #controls {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  #canvas {
+    display: block;
+  }
+  input[type=range] {
+    width: 220px;
+  }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <div><b>Space Curve (Schwarzschild slice)</b></div>
+  <div style="margin-top:6px;">
+    Curvature strength (scaled Schwarzschild radius):<br>
+    <input id="rsSlider" type="range" min="0" max="80" value="20">
+    <span id="rsValue"></span>
+  </div>
+  <div style="margin-top:6px; font-size:12px;">
+    • rs = 0 → flat space (straight line)<br>
+    • Larger rs → deeper funnel (stronger curvature)<br>
+    Curve is a cross-section of the embedded surface z(r).
+  </div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const rsSlider = document.getElementById("rsSlider");
+const rsValue  = document.getElementById("rsValue");
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  draw();
+}
+
+window.addEventListener("resize", resize);
+rsSlider.addEventListener("input", draw);
+resize();
+
+// Core: compute z(r) from (dz/dr)^2 = 1/(1 - rs/r) - 1
+function computeCurve(rs_dimless) {
+  // Use dimensionless r in [r_min, r_max]
+  const r_min = Math.max(rs_dimless + 0.02, 0.05);
+  const r_max = 4.0;
+  const N = 400;
+
+  const rArr = [];
+  const zArr = [];
+
+  let z = 0;
+  let rPrev = r_min;
+  let fPrev = 0;
+
+  function integrand(r, rs) {
+    // avoid singularity / negatives
+    const denom = 1 - rs / r;
+    if (denom <= 0) return Infinity;
+    const val = 1/denom - 1;
+    return Math.sqrt(Math.max(val, 0));
+  }
+
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const r = r_min + (r_max - r_min) * t;
+    let f = integrand(r, rs_dimless);
+
+    if (i === 0) {
+      z = 0;
+    } else {
+      // trapezoidal integration
+      const dr = r - rPrev;
+      if (isFinite(fPrev) && isFinite(f)) {
+        z += 0.5 * (fPrev + f) * dr;
+      }
+    }
+
+    rArr.push(r);
+    zArr.push(z);
+
+    rPrev = r;
+    fPrev = f;
+  }
+
+  return { rArr, zArr, r_min, r_max };
+}
+
+function drawAxes() {
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 1;
+
+  // Horizontal axis (z=0)
+  ctx.beginPath();
+  ctx.moveTo(40, h * 0.5);
+  ctx.lineTo(w - 40, h * 0.5);
+  ctx.stroke();
+
+  // Vertical axis (r = r_min)
+  ctx.beginPath();
+  ctx.moveTo(60, 40);
+  ctx.lineTo(60, h - 40);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.font = "12px Arial";
+  ctx.fillText("z(r)", 62, 45);
+  ctx.fillText("r", w - 50, h * 0.5 - 6);
+}
+
+function draw() {
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Map slider [0,80] -> rs_dimless [0,0.8]
+  const rs_dimless = rsSlider.value / 100.0;
+  rsValue.textContent = (rs_dimless).toFixed(2);
+
+  const { rArr, zArr, r_min, r_max } = computeCurve(rs_dimless);
+
+  // Find max z for scaling
+  let zMax = 0;
+  for (let z of zArr) if (isFinite(z) && z > zMax) zMax = z;
+  if (zMax === 0) zMax = 1;
+
+  drawAxes();
+
+  const marginLeft = 60;
+  const marginRight = 40;
+  const marginTop = 40;
+  const marginBottom = 40;
+
+  const usableW = w - marginLeft - marginRight;
+  const usableH = h - marginTop - marginBottom;
+  const centerY = marginTop + usableH * 0.4; // baseline for z=0
+  const zScale = usableH * 0.5 / zMax;       // scale so it fits nicely
+
+  // Draw the curve
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "cyan";
+  ctx.beginPath();
+
+  for (let i = 0; i < rArr.length; i++) {
+    const r = rArr[i];
+    const z = zArr[i];
+
+    // map to canvas
+    const xr = marginLeft + ((r - r_min) / (r_max - r_min)) * usableW;
+    const yr = centerY + z * zScale; // downward funnel
+
+    if (i === 0) ctx.moveTo(xr, yr);
+    else ctx.lineTo(xr, yr);
+  }
+  ctx.stroke();
+
+  // If rs_dimless = 0, also explicitly show flat line
+  if (rs_dimless === 0) {
+    ctx.strokeStyle = "yellow";
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(marginLeft, centerY);
+    ctx.lineTo(w - marginRight, centerY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Add labels
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.font = "14px Arial";
+  ctx.fillText("Space curve: embedded z(r) from (dz/dr)^2 = 1/(1 - rs/r) - 1", marginLeft, h - 18);
+}
+</script>
+
+</body>
+</html>

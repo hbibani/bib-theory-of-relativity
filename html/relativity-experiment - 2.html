@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Bibs-Based Relativity — Dual CPU Light Clock</title>
+<style>
+  body {
+    background: #000;
+    color: #fff;
+    font-family: monospace;
+    text-align: center;
+    margin: 0;
+    overflow: hidden;
+  }
+  canvas {
+    background: radial-gradient(circle at 50% 80%, #111, #000);
+    display: block;
+    margin: auto;
+    border: 1px solid #222;
+  }
+  #controls {
+    position: fixed;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #0ff;
+  }
+  input[type=range] {
+    width: 300px;
+  }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <b>Train velocity (v/u):</b>
+  <input type="range" id="velSlider" min="0" max="0.99" step="0.01" value="0.5">
+  <span id="vDisplay">0.50</span>
+  &nbsp; | &nbsp;
+  <span id="sDisplay">s(v)=0.866</span>
+</div>
+
+<canvas id="sim" width="1000" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById("sim");
+const ctx = canvas.getContext("2d");
+const vSlider = document.getElementById("velSlider");
+const vDisplay = document.getElementById("vDisplay");
+const sDisplay = document.getElementById("sDisplay");
+
+let v = 0.5;
+const u = 1;
+let s = Math.sqrt(1 - (v/u)**2);
+
+let bib = 0;
+let lightY = 0;
+let lightDir = 1; // up or down
+let lightSpeed = 8; // pixels per frame (for visual)
+let trainX = 100;
+let trainWidth = 250;
+let mirrorHeight = 200;
+let tickCountStationary = 0;
+let tickCountMoving = 0;
+let lightTickCount = 0;
+let movingTickInterval = Math.round(1 / s); // bibs per tick
+
+vSlider.oninput = () => {
+  v = parseFloat(vSlider.value);
+  s = Math.sqrt(1 - (v/u)**2);
+  movingTickInterval = Math.round(1 / s);
+  vDisplay.textContent = v.toFixed(2);
+  sDisplay.textContent = `s(v)=${s.toFixed(3)}`;
+};
+
+// main draw loop
+function draw() {
+  bib++;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Update train motion
+  trainX += v * 4; // visual speed
+  if (trainX > canvas.width + 100) trainX = -trainWidth;
+
+  // Update light motion inside train
+  lightY += lightDir * lightSpeed;
+  if (lightY > mirrorHeight || lightY < 0) {
+    lightDir *= -1;
+    lightTickCount++;
+  }
+
+  // Draw ground observer (stationary CPU)
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(50, canvas.height - 120, 40, 100);
+  ctx.fillText("🧍 Ground Observer", 20, canvas.height - 130);
+
+  // Draw stationary clock ticks
+  if (bib % 10 === 0) tickCountStationary++;
+  ctx.fillStyle = "#ff0";
+  ctx.fillText(`Stationary ticks: ${tickCountStationary}`, 20, 40);
+
+  // Draw moving train (moving CPU)
+  ctx.fillStyle = "#444";
+  ctx.fillRect(trainX, canvas.height - 300, trainWidth, 150);
+  ctx.fillStyle = "#0ff";
+  ctx.fillText("🚆 Train (moving observer)", trainX, canvas.height - 320);
+
+  // Draw mirrors (for light clock)
+  ctx.strokeStyle = "#0ff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(trainX + trainWidth/2 - 40, canvas.height - 300);
+  ctx.lineTo(trainX + trainWidth/2 - 40, canvas.height - 300 + mirrorHeight);
+  ctx.moveTo(trainX + trainWidth/2 + 40, canvas.height - 300);
+  ctx.lineTo(trainX + trainWidth/2 + 40, canvas.height - 300 + mirrorHeight);
+  ctx.stroke();
+
+  // Draw light pulse bouncing between mirrors
+  ctx.beginPath();
+  ctx.arc(trainX + trainWidth/2, canvas.height - 300 + lightY, 6, 0, 2*Math.PI);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+
+  // Moving clock tick (slower)
+  if (bib % movingTickInterval === 0) tickCountMoving++;
+  ctx.fillStyle = "#f80";
+  ctx.fillText(`Moving ticks: ${tickCountMoving}`, 20, 60);
+
+  // Absolute time
+  ctx.fillStyle = "#0f0";
+  ctx.fillText(`Absolute bibs: ${bib}`, 20, 20);
+  ctx.fillText(`Ratio (moving/stationary): ${(tickCountMoving/tickCountStationary).toFixed(3)} ≈ s(v)`, 20, 80);
+
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
